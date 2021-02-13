@@ -1,15 +1,18 @@
 ![image](https://github.com/Heyjuke58/frcnn-wind-turbine-detection/blob/master/images/example_res.jpg)
-# faster-RCNN implementation for the detection of wind turbines from arial images
-Forked from [here](https://github.com/kentaroy47/frcnn-from-scratch-with-keras)
+Example from test set. Blue: Ground truth boxes, red: predictions
+# faster-RCNN implementation for detection of wind turbines from aerial images
+Forked from [here](https://github.com/kentaroy47/frcnn-from-scratch-with-keras).
+
 Thanks go out to [kentaroy47](https://github.com/kentaroy47)!
 
 If you understand german, you can consult my bachelor thesis for context and details, why and how this was implemented. I added a pdf to this repo.
 
 ## Frameworks
 I updated support to tensorflow 2, originally was:
+
 Tested with Tensorflow==1.12.0 and Keras 2.2.4.
 
-#How to run
+##How to run
 
 Prerequisites: Python 3.6, pip > 20, virtualenv
 
