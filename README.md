@@ -12,11 +12,11 @@ I updated support to tensorflow 2, originally was:
 
 Tested with Tensorflow==1.12.0 and Keras 2.2.4.
 
-##How to run
+## How to run
 
 Prerequisites: Python 3.6, pip > 20, virtualenv
 
-####Setup virtual environment
+#### Setup virtual environment
 
 Windows
 ```
@@ -36,7 +36,7 @@ pip install -r requirements.txt
 
 ```
 
-###Prepare Annotation File
+### Prepare Annotation File
 Due to data property reasons only a few example images are annotated in the annotation csv ``set_splits/bboxes_example.csv``.\
 One line in the annotation csv holds the information about one turbine in the image.\
 An example line: ``22084_7.227_49.476_2011-12-01.jpg,999,64,1089,154,turbine,large,176.0,train``\
@@ -44,7 +44,7 @@ The format is: ``image_filename,x1,y1,x2,y2,class,size_category,size,set``\
 The coordinates are the top left and the bottom right corner.
 
 
-####Train RPN alone and with Classifier
+#### Train RPN alone and with Classifier
 ```
 python train_rpn.py -p set_splits/bboxes_example.csv
 ```
@@ -53,7 +53,7 @@ python train_frcnn.py -p set_splits/bboxes_example.csv -rpn models/rpn/rpn_model
 ```
 Hyperparameters can be changed in the config file ``keras_frcnn/config.py``, as well as with other options (s. `train_rpn.py` and `train_frcnn.py` for the documentation)
 
-###Test RPN alone and with Classifier
+### Test RPN alone and with Classifier
 ```
 python test_rpn.py -p set_splits/bboxes_example.csv --write --load models/rpn/rpn_model.hdf5
 ```
