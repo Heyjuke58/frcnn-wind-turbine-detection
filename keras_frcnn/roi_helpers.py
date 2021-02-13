@@ -25,14 +25,13 @@ def calc_iou(R, img_data, C, class_mapping):
 	y_class_num = []
 	y_class_regr_coords = []
 	y_class_regr_label = []
-	IoUs = [] # for debugging only
 
 	for ix in range(R.shape[0]):
 		(x1, y1, x2, y2) = R[ix, :]
-		x1 = int(round(x1))
-		y1 = int(round(y1))
-		x2 = int(round(x2))
-		y2 = int(round(y2))
+		# x1 = int(round(x1))
+		# y1 = int(round(y1))
+		# x2 = int(round(x2))
+		# y2 = int(round(y2))
 
 		best_iou = 0.0
 		best_bbox = -1
@@ -42,32 +41,32 @@ def calc_iou(R, img_data, C, class_mapping):
 				best_iou = curr_iou
 				best_bbox = bbox_num
 
-		if best_iou < C.classifier_min_overlap:
-				continue
+		# if best_iou < C.classifier_min_overlap:
+		# 		continue
+		# else:
+		w = x2 - x1
+		h = y2 - y1
+		x_roi.append([x1, y1, w, h])
+
+		# if C.classifier_min_overlap <= best_iou < C.classifier_max_overlap:
+		if best_iou < C.classifier_max_overlap:
+			# hard negative example
+			cls_name = 'bg'
+		elif C.classifier_max_overlap <= best_iou:
+			cls_name = bboxes[best_bbox]['class']
+			cxg = (gta[best_bbox, 0] + gta[best_bbox, 1]) / 2.0
+			cyg = (gta[best_bbox, 2] + gta[best_bbox, 3]) / 2.0
+
+			cx = x1 + w / 2.0
+			cy = y1 + h / 2.0
+
+			tx = (cxg - cx) / float(w)
+			ty = (cyg - cy) / float(h)
+			tw = np.log((gta[best_bbox, 1] - gta[best_bbox, 0]) / float(w))
+			th = np.log((gta[best_bbox, 3] - gta[best_bbox, 2]) / float(h))
 		else:
-			w = x2 - x1
-			h = y2 - y1
-			x_roi.append([x1, y1, w, h])
-			IoUs.append(best_iou)
-
-			if C.classifier_min_overlap <= best_iou < C.classifier_max_overlap:
-				# hard negative example
-				cls_name = 'bg'
-			elif C.classifier_max_overlap <= best_iou:
-				cls_name = bboxes[best_bbox]['class']
-				cxg = (gta[best_bbox, 0] + gta[best_bbox, 1]) / 2.0
-				cyg = (gta[best_bbox, 2] + gta[best_bbox, 3]) / 2.0
-
-				cx = x1 + w / 2.0
-				cy = y1 + h / 2.0
-
-				tx = (cxg - cx) / float(w)
-				ty = (cyg - cy) / float(h)
-				tw = np.log((gta[best_bbox, 1] - gta[best_bbox, 0]) / float(w))
-				th = np.log((gta[best_bbox, 3] - gta[best_bbox, 2]) / float(h))
-			else:
-				print('roi = {}'.format(best_iou))
-				raise RuntimeError
+			print('roi = {}'.format(best_iou))
+			raise RuntimeError
 
 		class_num = class_mapping[cls_name]
 		class_label = len(class_mapping) * [0]
@@ -93,7 +92,7 @@ def calc_iou(R, img_data, C, class_mapping):
 	Y1 = np.array(y_class_num)
 	Y2 = np.concatenate([np.array(y_class_regr_label),np.array(y_class_regr_coords)],axis=1)
 
-	return np.expand_dims(X, axis=0), np.expand_dims(Y1, axis=0), np.expand_dims(Y2, axis=0), IoUs
+	return np.expand_dims(X, axis=0), np.expand_dims(Y1, axis=0), np.expand_dims(Y2, axis=0)
 
 def apply_regr(x, y, w, h, tx, ty, tw, th):
 	try:
@@ -142,10 +141,10 @@ def apply_regr_np(X, T):
 		x1 = cx1 - w1/2.
 		y1 = cy1 - h1/2.
 
-		x1 = np.round(x1)
-		y1 = np.round(y1)
-		w1 = np.round(w1)
-		h1 = np.round(h1)
+		# x1 = np.round(x1)
+		# y1 = np.round(y1)
+		# w1 = np.round(w1)
+		# h1 = np.round(h1)
 		return np.stack([x1, y1, w1, h1])
 	except Exception as e:
 		print(e)
@@ -215,11 +214,11 @@ def non_max_suppression_fast(boxes, probs, overlap_thresh=0.9, max_boxes=300):
 			break
 
 	# return only the bounding boxes that were picked using the integer data type
-	boxes = boxes[pick].astype("int")
+	#boxes = boxes[pick].astype("int")
+	boxes = boxes[pick]
 	probs = probs[pick]
 	return boxes, probs
 
-import time
 def rpn_to_roi(rpn_layer, regr_layer, C, dim_ordering, use_regr=True, max_boxes=300,overlap_thresh=0.9):
 
 	regr_layer = regr_layer / C.std_scaling
@@ -287,6 +286,6 @@ def rpn_to_roi(rpn_layer, regr_layer, C, dim_ordering, use_regr=True, max_boxes=
 	all_boxes = np.delete(all_boxes, idxs, 0)
 	all_probs = np.delete(all_probs, idxs, 0)
 
-	result = non_max_suppression_fast(all_boxes, all_probs, overlap_thresh=overlap_thresh, max_boxes=max_boxes)[0]
+	result = non_max_suppression_fast(all_boxes, all_probs, overlap_thresh=overlap_thresh, max_boxes=max_boxes)
 
 	return result

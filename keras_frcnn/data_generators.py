@@ -2,6 +2,7 @@ from __future__ import absolute_import
 import numpy as np
 import cv2
 import random
+import math
 import copy
 from . import data_augment
 import threading
@@ -37,7 +38,7 @@ def iou(a, b):
 	return float(area_i) / float(area_u + 1e-6)
 
 
-def get_new_img_size(width, height, img_min_side=600):
+def get_new_img_size(width, height, img_min_side=800):
 	if width <= height:
 		f = float(img_min_side) / width
 		resized_height = int(f * height)
@@ -252,6 +253,74 @@ def calc_rpn(C, img_data, width, height, resized_width, resized_height, img_leng
 	return np.copy(y_rpn_cls), np.copy(y_rpn_regr)
 
 
+def calc_rpn_modified(C, img_data, width, height, resized_width, resized_height, img_length_calc_function):
+
+	downscale = float(C.rpn_stride)
+
+	# calculate the output map size based on the network architecture
+
+	(output_width, output_height) = img_length_calc_function(resized_width, resized_height)
+
+	# initialise empty output objectives
+	# first value of y_is_coord_valid indicates that there is a wind turbine at that location
+	# second value of y_is_coord_valid indicated that the coord should be considered by the loss in training
+	y_is_coord_valid = np.zeros((output_height, output_width, 2)).astype(int)
+	y_rpn_coord = np.zeros((output_height, output_width, 2))
+
+	num_coords = len(img_data['coordinates'])
+
+	# get the GT coordinates, and resize to account for image resizing
+	gta = np.zeros((num_coords, 2))
+	for coord_num, coord in enumerate(img_data['coordinates']):
+		# get the GT box coordinates, and resize to account for image resizing
+		gta[coord_num, 0] = coord['x'] * (resized_width / float(width))
+		gta[coord_num, 1] = coord['y'] * (resized_height / float(height))
+
+	# rpn ground truth
+
+	for ix in range(output_width):
+		for jy in range(output_height):
+
+			# coord_type indicates whether an anchor should be a target
+			coord_type = 'neg'
+			tx = None
+			ty = None
+
+			for coord_num in range(num_coords):
+				if not (math.floor(gta[coord_num, 0] / downscale) == ix and math.floor(gta[coord_num, 1] / downscale) == jy):
+					continue
+				# calculate the regression targets
+				tx = gta[coord_num, 0] / downscale
+				ty = gta[coord_num, 1] / downscale
+
+				coord_type = 'pos'
+				break
+
+			# turn on or off outputs depending on IOUs
+			if coord_type == 'neg':
+				y_is_coord_valid[jy, ix, :] = 0
+			elif coord_type == 'pos' and tx and ty:
+				y_is_coord_valid[jy, ix, :] = 1
+				y_rpn_coord[jy, ix, 0] = tx
+				y_rpn_coord[jy, ix, 1] = ty
+
+	y_is_coord_valid = np.transpose(y_is_coord_valid, (2, 0, 1))
+	y_is_coord_valid = np.expand_dims(y_is_coord_valid, axis=0)
+
+	y_rpn_coord = np.transpose(y_rpn_coord, (2, 0, 1))
+	y_rpn_coord = np.expand_dims(y_rpn_coord, axis=0)
+
+	pos_locs = np.array(np.where(y_is_coord_valid[0, 0, :, :] == 1))
+	neg_locs = np.array(np.where(y_is_coord_valid[0, 0, :, :] == 0))
+
+	random_neg = neg_locs[:, np.random.choice(neg_locs.shape[1], pos_locs.shape[1], replace=False)]
+
+	y_is_coord_valid[0, 1, random_neg[0, :], random_neg[1, :]] = 1
+
+	y_rpn_coord = np.concatenate([y_is_coord_valid, y_rpn_coord], axis=1)
+
+	return np.copy(y_is_coord_valid), np.copy(y_rpn_coord)
+
 class threadsafe_iter:
 	"""Takes an iterator/generator and makes it thread-safe by
 	serializing call to the `next` method of given iterator/generator.
@@ -275,7 +344,15 @@ def threadsafe_generator(f):
 		return threadsafe_iter(f(*a, **kw))
 	return g
 
-def get_anchor_gt(all_img_data, class_count, C, img_length_calc_function, backend, mode='train'):
+def hisEqulColor(img):
+	ycrcb=cv2.cvtColor(img,cv2.COLOR_BGR2YCR_CB)
+	channels=cv2.split(ycrcb)
+	cv2.equalizeHist(channels[0],channels[0])
+	cv2.merge(channels,ycrcb)
+	cv2.cvtColor(ycrcb,cv2.COLOR_YCR_CB2BGR,img)
+	return img
+
+def get_anchor_gt(all_img_data, class_count, C, img_length_calc_function, backend, mode='train', hist_equal=False):
 
 	# The following line is not useful with Python 3.5, it is kept for the legacy
 	# all_img_data = sorted(all_img_data)
@@ -308,7 +385,7 @@ def get_anchor_gt(all_img_data, class_count, C, img_length_calc_function, backen
 				# get image dimensions for resizing
 				(resized_width, resized_height) = get_new_img_size(width, height, C.im_size)
 
-				# resize the image so that smalles side is length = 600px
+				# resize the image so that smalles side is length = 800px
 				x_img = cv2.resize(x_img, (resized_width, resized_height), interpolation=cv2.INTER_CUBIC)
 
 				try:
@@ -316,14 +393,20 @@ def get_anchor_gt(all_img_data, class_count, C, img_length_calc_function, backen
 				except:
 					continue
 
-				# Zero-center by mean pixel, and preprocess image
+				if hist_equal:
+					x_img = hisEqulColor(x_img)
 
+				# Zero-center by mean pixel, and preprocess image
 				x_img = x_img[:,:, (2, 1, 0)]  # BGR -> RGB
 				x_img = x_img.astype(np.float32)
+				#x_img /= 255.
 				x_img[:, :, 0] -= C.img_channel_mean[0]
 				x_img[:, :, 1] -= C.img_channel_mean[1]
 				x_img[:, :, 2] -= C.img_channel_mean[2]
-				x_img /= C.img_scaling_factor
+
+				x_img[:,:,0] /= C.img_channel_std[0]
+				x_img[:,:,1] /= C.img_channel_std[1]
+				x_img[:,:,2] /= C.img_channel_std[2]
 
 				x_img = np.transpose(x_img, (2, 0, 1))
 				x_img = np.expand_dims(x_img, axis=0)
@@ -336,6 +419,76 @@ def get_anchor_gt(all_img_data, class_count, C, img_length_calc_function, backen
 					y_rpn_regr = np.transpose(y_rpn_regr, (0, 2, 3, 1))
 
 				yield np.copy(x_img), [np.copy(y_rpn_cls), np.copy(y_rpn_regr)], img_data_aug
+
+			except Exception as e:
+				print(e)
+				continue
+
+
+def get_modified_gt(all_img_data, class_count, C, img_length_calc_function, backend, mode='train'):
+
+	# The following line is not useful with Python 3.5, it is kept for the legacy
+	# all_img_data = sorted(all_img_data)
+
+	sample_selector = SampleSelector(class_count)
+
+	while True:
+		if mode == 'train':
+			np.random.shuffle(all_img_data)
+
+		for img_data in all_img_data:
+			try:
+
+				if C.balanced_classes and sample_selector.skip_sample_for_balanced_class(img_data):
+					continue
+
+				# read in image, and optionally add augmentation
+
+				if mode == 'train':
+					img_data_aug, x_img = data_augment.augment_modified(img_data, C, augment=True)
+				else:
+					img_data_aug, x_img = data_augment.augment_modified(img_data, C, augment=False)
+
+				(width, height) = (img_data_aug['width'], img_data_aug['height'])
+				(rows, cols, _) = x_img.shape
+
+				assert cols == width
+				assert rows == height
+
+				# get image dimensions for resizing
+				(resized_width, resized_height) = get_new_img_size(width, height, C.im_size)
+
+				# resize the image so that smalles side is length = 800px
+				x_img = cv2.resize(x_img, (resized_width, resized_height), interpolation=cv2.INTER_CUBIC)
+
+				try:
+					y_rpn_cls, y_rpn_coord = calc_rpn_modified(C, img_data_aug, width, height, resized_width, resized_height, img_length_calc_function)
+				except Exception as e:
+					print(e)
+					continue
+
+				# Zero-center by mean pixel, and preprocess image
+				x_img = x_img[:,:, (2, 1, 0)]  # BGR -> RGB
+				x_img = x_img.astype(np.float32)
+				#x_img /= 255.
+				x_img[:, :, 0] -= C.img_channel_mean[0]
+				x_img[:, :, 1] -= C.img_channel_mean[1]
+				x_img[:, :, 2] -= C.img_channel_mean[2]
+
+				x_img[:,:,0] /= C.img_channel_std[0]
+				x_img[:,:,1] /= C.img_channel_std[1]
+				x_img[:,:,2] /= C.img_channel_std[2]
+
+				x_img = np.transpose(x_img, (2, 0, 1))
+				x_img = np.expand_dims(x_img, axis=0)
+
+
+				if backend == 'tf':
+					x_img = np.transpose(x_img, (0, 2, 3, 1))
+					y_rpn_cls = np.transpose(y_rpn_cls, (0, 2, 3, 1))
+					y_rpn_coord = np.transpose(y_rpn_coord, (0, 2, 3, 1))
+
+				yield np.copy(x_img), [np.copy(y_rpn_cls), np.copy(y_rpn_coord)], img_data_aug
 
 			except Exception as e:
 				print(e)

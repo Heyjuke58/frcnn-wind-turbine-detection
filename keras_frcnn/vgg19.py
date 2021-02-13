@@ -151,10 +151,10 @@ def classifier(base_layers, input_rois, num_rois, nb_classes = 21, trainable=Fal
     # compile times on theano tend to be very high, so we use smaller ROI pooling regions to workaround
 
     if K.backend() == 'tensorflow':
-        pooling_regions = 7
+        pooling_regions = 5
         input_shape = (num_rois,7,7,512)
     elif K.backend() == 'theano':
-        pooling_regions = 7
+        pooling_regions = 5
         input_shape = (num_rois,512,7,7)
 
     out_roi_pool = RoiPoolingConv(pooling_regions, num_rois)([base_layers, input_rois])

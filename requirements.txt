@@ -1,5 +1,10 @@
 h5py
-Keras==2.2.4
+Keras
 numpy
 opencv-python
 sklearn
+tensorflow
+pydot
+pyproj
+geopy
+matplotlib

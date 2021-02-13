@@ -17,10 +17,10 @@ from keras_frcnn.FixedBatchNormalization import FixedBatchNormalization
 
 
 def get_weight_path():
-    if K.image_dim_ordering() == 'th':
+    if K.common.image_dim_ordering() == 'th':
         return 'resnet50_weights_th_dim_ordering_th_kernels_notop.h5'
     else:
-        return os.path.join("pretrain", "resnet50_weights_tf_dim_ordering_tf_kernels.h5")
+        return os.path.join("models", "resnet50_weights_tf_dim_ordering_tf_kernels.h5")
 
 def get_img_output_length(width, height):
     def get_output_length(input_length):
@@ -39,7 +39,7 @@ def identity_block(input_tensor, kernel_size, filters, stage, block, trainable=T
 
     nb_filter1, nb_filter2, nb_filter3 = filters
     
-    if K.image_dim_ordering() == 'tf':
+    if K.common.image_dim_ordering() == 'tf':
         bn_axis = 3
     else:
         bn_axis = 1
@@ -68,7 +68,7 @@ def identity_block_td(input_tensor, kernel_size, filters, stage, block, trainabl
     # identity block time distributed
 
     nb_filter1, nb_filter2, nb_filter3 = filters
-    if K.image_dim_ordering() == 'tf':
+    if K.common.image_dim_ordering() == 'tf':
         bn_axis = 3
     else:
         bn_axis = 1
@@ -95,7 +95,7 @@ def identity_block_td(input_tensor, kernel_size, filters, stage, block, trainabl
 def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2), trainable=True):
 
     nb_filter1, nb_filter2, nb_filter3 = filters
-    if K.image_dim_ordering() == 'tf':
+    if K.common.image_dim_ordering() == 'tf':
         bn_axis = 3
     else:
         bn_axis = 1
@@ -127,7 +127,7 @@ def conv_block_td(input_tensor, kernel_size, filters, stage, block, input_shape,
     # conv block time distributed
 
     nb_filter1, nb_filter2, nb_filter3 = filters
-    if K.image_dim_ordering() == 'tf':
+    if K.common.image_dim_ordering() == 'tf':
         bn_axis = 3
     else:
         bn_axis = 1
@@ -156,7 +156,7 @@ def conv_block_td(input_tensor, kernel_size, filters, stage, block, input_shape,
 def nn_base(input_tensor=None, trainable=False):
 
     # Determine proper input shape
-    if K.image_dim_ordering() == 'th':
+    if K.common.image_dim_ordering() == 'th':
         input_shape = (3, None, None)
     else:
         input_shape = (None, None, 3)
@@ -169,7 +169,7 @@ def nn_base(input_tensor=None, trainable=False):
         else:
             img_input = input_tensor
 
-    if K.image_dim_ordering() == 'tf':
+    if K.common.image_dim_ordering() == 'tf':
         bn_axis = 3
     else:
         bn_axis = 1
@@ -179,6 +179,7 @@ def nn_base(input_tensor=None, trainable=False):
     x = Convolution2D(64, (7, 7), strides=(2, 2), name='conv1', trainable = trainable)(x)
     x = BatchNormalization(axis=bn_axis, name='bn_conv1')(x)
     x = Activation('relu')(x)
+    x = ZeroPadding2D((1,1))(x)
     x = MaxPooling2D((3, 3), strides=(2, 2))(x)
 
     x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1), trainable = trainable)
@@ -225,16 +226,25 @@ def rpn(base_layers,num_anchors):
 
     return [x_class, x_regr, base_layers]
 
-def classifier(base_layers, input_rois, num_rois, nb_classes = 21, trainable=False):
+
+def rpn_modified(base_layers):
+
+    x = Convolution2D(512, (3, 3), padding='same', activation='relu', kernel_initializer='normal', name='rpn_conv1')(base_layers)
+
+    x_class = Convolution2D(1, (1,1), activation='sigmoid', kernel_initializer='uniform', name='rpn_out_class')(x)
+    x_coord = Convolution2D(2, (1, 1), activation='linear', kernel_initializer='zero', name='rpn_modified_out_coord')(x)
+
+    return [x_class, x_coord, base_layers]
+
+
+def classifier(base_layers, input_rois, num_rois, nb_classes, trainable=False):
 
     # compile times on theano tend to be very high, so we use smaller ROI pooling regions to workaround
 
     if K.backend() == 'tensorflow':
-        pooling_regions = 7
-        input_shape = (num_rois,7,7,1024)
+        pooling_regions = 5
     elif K.backend() == 'theano':
-        pooling_regions = 7
-        input_shape = (num_rois,1024,7,7)
+        pooling_regions = 5
 
     x = RoiPoolingConv(pooling_regions, num_rois)([base_layers, input_rois])
 
@@ -242,7 +252,7 @@ def classifier(base_layers, input_rois, num_rois, nb_classes = 21, trainable=Fal
     #x = TimeDistributed(Convolution2D(1024, (3, 3), name='lastconv', padding="same"))(out_roi_pool)
     #x = Activation('relu')(x)
 
-    x = TimeDistributed(AveragePooling2D((7, 7)), name='avg_pool')(x)
+    x = TimeDistributed(AveragePooling2D((5, 5)), name='avg_pool')(x)
     out = TimeDistributed(Flatten(name='flatten'))(x)
     out = TimeDistributed(Dense(4096, activation='relu', name='fc1'))(out)
     out = TimeDistributed(Dropout(0.5))(out)
