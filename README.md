@@ -8,7 +8,7 @@ Thanks go out to [kentaroy47](https://github.com/kentaroy47)!
 If you understand german, you can consult my bachelor thesis for context and details, why and how this was implemented. I added a pdf to this repo.
 
 ## Frameworks
-I updated support to tensorflow 2, originally was:
+I updated support of tensorflow 2, originally was:
 
 Tested with Tensorflow==1.12.0 and Keras 2.2.4.
 
